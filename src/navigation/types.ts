@@ -27,5 +27,5 @@ export type SplitsStackParamList = {
 
 export type SettingsStackParamList = {
   SettingsHome: { refreshAt?: number } | undefined;
-  CommonData: undefined;
+  CommonData: { tab?: 'category' | 'person' | 'group' } | undefined;
 };

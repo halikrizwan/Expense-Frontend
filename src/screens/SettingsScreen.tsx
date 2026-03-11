@@ -3,16 +3,17 @@ import { ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppText, Loading } from '../components';
+import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppText, Loading, SegmentedTabs } from '../components';
 import { AppColors, radius, spacing } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useAppAlert } from '../context/AppAlertContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useSettingsCurrency } from '../hooks/useSettingsCurrency';
 import { SettingsStackParamList } from '../navigation/types';
-import { resetAllApi, updateSettingsApi } from '../services/backend';
+import { resetAllApi, updateSettingsApi, addCategoryApi, addGroupApi } from '../services/backend';
 import { exportToExcel, exportToJson, importFromJson } from '../services/exportService';
-import { subscribeRefresh } from '../services/refreshBus';
+import { emitRefresh, subscribeRefresh } from '../services/refreshBus';
+import { TransactionType } from '../types/entities';
 
 export const SettingsScreen = () => {
   const insets = useSafeAreaInsets();
@@ -24,6 +25,9 @@ export const SettingsScreen = () => {
   const { currency, loading: currencyLoading, refresh, saveCurrency } = useSettingsCurrency();
   const [currencyInput, setCurrencyInput] = useState(currency);
   const [busy, setBusy] = useState(false);
+  const [createModal, setCreateModal] = useState<'category' | 'group' | null>(null);
+  const [createName, setCreateName] = useState('');
+  const [categoryType, setCategoryType] = useState<TransactionType>('expense');
 
   useEffect(() => { setCurrencyInput(currency); }, [currency]);
   useEffect(() => subscribeRefresh('settings', refresh), [refresh]);
@@ -33,6 +37,36 @@ export const SettingsScreen = () => {
     try { await task(); await alert('Success', successMessage, 'success'); }
     catch (error) { await alert('Error', error instanceof Error ? error.message : 'Action failed.', 'error'); }
     finally { setBusy(false); }
+  };
+
+  const openCreate = (kind: 'category' | 'group') => {
+    setCreateModal(kind);
+    setCreateName('');
+    setCategoryType('expense');
+  };
+
+  const onCreateCommonData = async () => {
+    const name = createName.trim();
+    if (!createModal) return;
+    if (!name) {
+      await alert('Validation', 'Name is required.', 'warning');
+      return;
+    }
+
+    await withLoading(async () => {
+      if (createModal === 'category') {
+        await addCategoryApi({ name, type: categoryType });
+      } else {
+        await addGroupApi(name);
+      }
+
+      emitRefresh('settings');
+      emitRefresh('transactions');
+      emitRefresh('splits');
+      setCreateModal(null);
+      setCreateName('');
+      setCategoryType('expense');
+    }, `${createModal === 'category' ? 'Category' : 'Group'} added.`);
   };
 
   return (
@@ -64,6 +98,22 @@ export const SettingsScreen = () => {
           <AppText variant="heading">Common Data</AppText>
           <View style={styles.currencyContent}>
             <AppText variant="caption" color={colors.textSecondary}>Manage categories, users, and groups on a dedicated page.</AppText>
+            <View style={styles.buttonRow}>
+              <AppButton
+                title="Add Category"
+                iconName="shape-outline"
+                variant="soft"
+                onPress={() => openCreate('category')}
+                style={styles.rowButton}
+              />
+              <AppButton
+                title="Add Group"
+                iconName="account-group-outline"
+                variant="soft"
+                onPress={() => openCreate('group')}
+                style={styles.rowButton}
+              />
+            </View>
             <AppButton
               title="Open Common Data"
               iconName="database-cog-outline"
@@ -114,6 +164,45 @@ export const SettingsScreen = () => {
           }} />
         </AnimatedSection>
       </ScrollView>
+
+      <AppModal
+        visible={!!createModal}
+        title={createModal === 'category' ? 'Add Category' : 'Add Group'}
+        onClose={() => setCreateModal(null)}>
+        <View style={styles.modalBody}>
+          <AppInput
+            label="Name"
+            value={createName}
+            onChangeText={setCreateName}
+            placeholder={createModal === 'category' ? 'Enter category name' : 'Enter group name'}
+          />
+          {createModal === 'category' ? (
+            <SegmentedTabs
+              items={[
+                { key: 'expense', label: 'Expense' },
+                { key: 'income', label: 'Income' },
+              ]}
+              value={categoryType}
+              onChange={value => setCategoryType(value as TransactionType)}
+            />
+          ) : null}
+          <AppButton
+            title={createModal === 'category' ? 'Save Category' : 'Save Group'}
+            iconName="plus"
+            onPress={onCreateCommonData}
+            loading={busy}
+          />
+          <AppButton
+            title="Manage All Common Data"
+            variant="outline"
+            onPress={() => {
+              const tab = createModal || 'category';
+              setCreateModal(null);
+              navigation.navigate('CommonData', { tab });
+            }}
+          />
+        </View>
+      </AppModal>
     </View>
   );
 };
@@ -137,7 +226,18 @@ const createStyles = (colors: AppColors, mode: 'light' | 'dark') =>
       marginTop: spacing.sm,
       gap: spacing.sm,
     },
+    buttonRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    rowButton: {
+      flex: 1,
+    },
     buttonGap: { marginTop: spacing.sm, gap: spacing.sm },
+    modalBody: {
+      gap: spacing.md,
+      paddingBottom: spacing.sm,
+    },
     dangerCard: {
       backgroundColor: mode === 'dark' ? colors.surface : '#FFF1EF',
       borderRadius: radius.lg,

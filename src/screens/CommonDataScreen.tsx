@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,8 @@ import { useAppAlert } from '../context/AppAlertContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useUserRequests } from '../hooks/useUserRequests';
 import {
+  addCategoryApi,
+  addGroupApi,
   deleteCategoryApi,
   deleteGroupApi,
   deletePersonApi,
@@ -31,7 +33,7 @@ import {
   updateGroupApi,
   updatePersonApi,
 } from '../services/backend';
-import { subscribeRefresh } from '../services/refreshBus';
+import { emitRefresh, subscribeRefresh } from '../services/refreshBus';
 import { Category, Group, Person, TransactionType } from '../types/entities';
 import { SettingsStackParamList } from '../navigation/types';
 
@@ -48,12 +50,14 @@ interface EditState {
 export const CommonDataScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<SettingsStackParamList>>();
+  const route = useRoute();
   const { colors } = useAppTheme();
   const { alert, confirm } = useAppAlert();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { sendRequest } = useUserRequests();
+  const initialTab = ((route.params as SettingsStackParamList['CommonData'])?.tab || 'category') as CommonTab;
 
-  const [commonTab, setCommonTab] = useState<CommonTab>('category');
+  const [commonTab, setCommonTab] = useState<CommonTab>(initialTab);
   const [commonLoading, setCommonLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -65,6 +69,9 @@ export const CommonDataScreen = () => {
   const [editModal, setEditModal] = useState<EditState | null>(null);
   const [editName, setEditName] = useState('');
   const [editType, setEditType] = useState<TransactionType>('expense');
+  const [createModal, setCreateModal] = useState<'category' | 'group' | null>(null);
+  const [createName, setCreateName] = useState('');
+  const [createType, setCreateType] = useState<TransactionType>('expense');
 
   const refreshCommon = useCallback(async () => {
     setCommonLoading(true);
@@ -88,10 +95,18 @@ export const CommonDataScreen = () => {
 
   useEffect(() => subscribeRefresh('settings', refreshCommon), [refreshCommon]);
 
+  useEffect(() => {
+    const nextTab = ((route.params as SettingsStackParamList['CommonData'])?.tab || 'category') as CommonTab;
+    setCommonTab(nextTab);
+  }, [route.params]);
+
   const withLoading = async (task: () => Promise<void>, successMessage: string) => {
     setBusy(true);
     try {
       await task();
+      emitRefresh('settings');
+      emitRefresh('transactions');
+      emitRefresh('splits');
       await alert('Success', successMessage, 'success');
       await refreshCommon();
     } catch (error) {
@@ -122,6 +137,32 @@ export const CommonDataScreen = () => {
     setEditModal(item);
     setEditName(item.name);
     setEditType(item.type || 'expense');
+  };
+
+  const openCreate = (kind: 'category' | 'group') => {
+    setCreateModal(kind);
+    setCreateName('');
+    setCreateType('expense');
+  };
+
+  const onSaveCreate = async () => {
+    const trimmed = createName.trim();
+    if (!createModal) return;
+    if (!trimmed) {
+      await alert('Validation', 'Name is required.', 'warning');
+      return;
+    }
+
+    await withLoading(async () => {
+      if (createModal === 'category') {
+        await addCategoryApi({ name: trimmed, type: createType });
+      } else {
+        await addGroupApi(trimmed);
+      }
+      setCreateModal(null);
+      setCreateName('');
+      setCreateType('expense');
+    }, `${createModal === 'category' ? 'Category' : 'Group'} added.`);
   };
 
   const onSaveEdit = async () => {
@@ -211,6 +252,16 @@ export const CommonDataScreen = () => {
               onChange={value => setCommonTab(value as CommonTab)}
             />
 
+            {commonTab !== 'person' ? (
+              <AppButton
+                title={commonTab === 'category' ? 'Add Category' : 'Add Group'}
+                iconName="plus"
+                variant="soft"
+                onPress={() => openCreate(commonTab)}
+                disabled={busy}
+              />
+            ) : null}
+
             {commonTab === 'person' ? (
               <View style={styles.userSearchWrap}>
                 <AppInput
@@ -290,6 +341,33 @@ export const CommonDataScreen = () => {
             />
           ) : null}
           <AppButton title="Save Changes" iconName="content-save-outline" onPress={onSaveEdit} loading={busy} />
+        </View>
+      </AppModal>
+
+      <AppModal visible={!!createModal} title={createModal === 'category' ? 'Add Category' : 'Add Group'} onClose={() => setCreateModal(null)}>
+        <View style={styles.modalBody}>
+          <AppInput
+            label="Name"
+            value={createName}
+            onChangeText={setCreateName}
+            placeholder={createModal === 'category' ? 'Enter category name' : 'Enter group name'}
+          />
+          {createModal === 'category' ? (
+            <SegmentedTabs
+              items={[
+                { key: 'expense', label: 'Expense' },
+                { key: 'income', label: 'Income' },
+              ]}
+              value={createType}
+              onChange={value => setCreateType(value as TransactionType)}
+            />
+          ) : null}
+          <AppButton
+            title={createModal === 'category' ? 'Save Category' : 'Save Group'}
+            iconName="plus"
+            onPress={onSaveCreate}
+            loading={busy}
+          />
         </View>
       </AppModal>
     </View>

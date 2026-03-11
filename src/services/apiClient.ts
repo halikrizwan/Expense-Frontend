@@ -66,6 +66,96 @@ export class ApiError extends Error {
   }
 }
 
+type ApiValidationIssue = {
+  path?: string | string[];
+  message?: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const normalizePath = (path: ApiValidationIssue['path']) => {
+  if (Array.isArray(path)) {
+    return path.filter(Boolean).join('.');
+  }
+
+  return typeof path === 'string' ? path : '';
+};
+
+const formatValidationIssue = (issue: ApiValidationIssue) => {
+  const path = normalizePath(issue.path);
+  const message = typeof issue.message === 'string' ? issue.message.trim() : '';
+
+  if (path && message) return `${path}: ${message}`;
+  if (message) return message;
+  if (path) return path;
+  return '';
+};
+
+const readValidationIssues = (value: unknown): ApiValidationIssue[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(isRecord).map(issue => ({
+    path: Array.isArray(issue.path) || typeof issue.path === 'string' ? (issue.path as ApiValidationIssue['path']) : undefined,
+    message: typeof issue.message === 'string' ? issue.message : undefined,
+  }));
+};
+
+const tryParseJson = (value: string): unknown => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+};
+
+const formatValidationIssues = (issues: ApiValidationIssue[]) => {
+  const lines = issues
+    .map(formatValidationIssue)
+    .filter(Boolean);
+
+  return lines.length ? lines.join('\n') : null;
+};
+
+const getApiErrorMessage = (payload: unknown) => {
+  if (!isRecord(payload)) {
+    return 'Request failed.';
+  }
+
+  const directIssues = readValidationIssues(payload.errors);
+  const directMessage = typeof payload.message === 'string' ? payload.message.trim() : '';
+
+  if (directIssues.length) {
+    return formatValidationIssues(directIssues) || directMessage || 'Request failed.';
+  }
+
+  if (directMessage) {
+    const parsedMessage = tryParseJson(directMessage);
+
+    if (isRecord(parsedMessage)) {
+      const parsedIssues = readValidationIssues(parsedMessage.errors ?? parsedMessage.issues ?? parsedMessage.message);
+      const formattedParsedIssues = formatValidationIssues(parsedIssues);
+      if (formattedParsedIssues) {
+        return formattedParsedIssues;
+      }
+    }
+
+    if (Array.isArray(parsedMessage)) {
+      const parsedIssues = readValidationIssues(parsedMessage);
+      const formattedParsedIssues = formatValidationIssues(parsedIssues);
+      if (formattedParsedIssues) {
+        return formattedParsedIssues;
+      }
+    }
+
+    return directMessage;
+  }
+
+  return 'Request failed.';
+};
+
 export const apiRequest = async <T>(
   path: string,
   options: RequestInit = {},
@@ -131,7 +221,7 @@ export const apiRequest = async <T>(
     throw new ApiError(
       response.status,
       payload?.code || 'API_ERROR',
-      payload?.message || 'Request failed.',
+      getApiErrorMessage(payload),
     );
   }
 
