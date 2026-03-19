@@ -1,21 +1,23 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
+import { spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
 import { AppText } from './AppText';
 
 interface Props {
   title: string;
   subtitle?: string;
+  left?: React.ReactNode;
   right?: React.ReactNode;
 }
 
-export const AppHeader: React.FC<Props> = ({ title, subtitle, right }) => {
+export const AppHeader: React.FC<Props> = ({ title, subtitle, left, right }) => {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(), []);
 
   return (
     <View style={styles.row}>
+      {left}
       <View style={styles.left}>
         <AppText variant="titleMd">{title}</AppText>
         {subtitle ? (

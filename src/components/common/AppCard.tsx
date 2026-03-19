@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View, ViewProps } from 'react-native';
-import { AppColors, radius, shadows, spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
+import { AppColors, radius, shadows, spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
 
 export const AppCard: React.FC<ViewProps> = ({ style, children, ...rest }) => {
   const { colors } = useAppTheme();

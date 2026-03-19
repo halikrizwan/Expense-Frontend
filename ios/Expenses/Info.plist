@@ -33,6 +33,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect to Metro bundler on your Mac for development and debugging.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow camera access to scan bills and receipts.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

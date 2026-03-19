@@ -1,19 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppText, Loading, SegmentedTabs } from '../components';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppSelect, AppText, DatePickerModal, Loading, SegmentedTabs } from '../components';
 import { AppColors, radius, spacing } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useAppAlert } from '../context/AppAlertContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { useRecurring } from '../hooks/useRecurring';
 import { useSettingsCurrency } from '../hooks/useSettingsCurrency';
+import { useTransactions } from '../hooks/useTransactions';
 import { SettingsStackParamList } from '../navigation/types';
 import { resetAllApi, updateSettingsApi, addCategoryApi, addGroupApi } from '../services/backend';
-import { exportToExcel, exportToJson, importFromJson } from '../services/exportService';
+import { exportToJson, exportTransactionsToCsv, importFromJson } from '../services/exportService';
 import { emitRefresh, subscribeRefresh } from '../services/refreshBus';
-import { TransactionType } from '../types/entities';
+import { RecurringTransaction, TransactionType } from '../types/entities';
+import { formatCurrency } from '../utils/format';
 
 export const SettingsScreen = () => {
   const insets = useSafeAreaInsets();
@@ -23,11 +27,23 @@ export const SettingsScreen = () => {
   const { alert, confirm } = useAppAlert();
   const styles = useMemo(() => createStyles(colors, mode), [colors, mode]);
   const { currency, loading: currencyLoading, refresh, saveCurrency } = useSettingsCurrency();
+  const { recurring, loading: recurringLoading, add: addRecurring, update: updateRecurring, remove: removeRecurring } = useRecurring();
+  const { categories, categoryMap } = useTransactions();
   const [currencyInput, setCurrencyInput] = useState(currency);
   const [busy, setBusy] = useState(false);
-  const [createModal, setCreateModal] = useState<'category' | 'group' | null>(null);
+  const [createModal, setCreateModal] = useState<'category' | 'group' | 'recurring' | null>(null);
   const [createName, setCreateName] = useState('');
   const [categoryType, setCategoryType] = useState<TransactionType>('expense');
+  const [recurringForm, setRecurringForm] = useState({
+    type: 'income' as TransactionType,
+    categoryId: '',
+    amount: '',
+    label: 'Salary',
+    dayOfMonth: 1,
+  });
+  const [recurringPickerDate, setRecurringPickerDate] = useState(new Date());
+  const [showRecurringDatePicker, setShowRecurringDatePicker] = useState(false);
+  const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null);
 
   useEffect(() => { setCurrencyInput(currency); }, [currency]);
   useEffect(() => subscribeRefresh('settings', refresh), [refresh]);
@@ -39,10 +55,83 @@ export const SettingsScreen = () => {
     finally { setBusy(false); }
   };
 
-  const openCreate = (kind: 'category' | 'group') => {
+  const openCreate = (kind: 'category' | 'group' | 'recurring') => {
     setCreateModal(kind);
     setCreateName('');
     setCategoryType('expense');
+    if (kind === 'recurring') {
+      setRecurringForm({
+        type: 'income',
+        categoryId: getDefaultRecurringCategoryId('income'),
+        amount: '',
+        label: 'Salary',
+        dayOfMonth: new Date().getDate(),
+      });
+      setRecurringPickerDate(new Date());
+      setEditingRecurring(null);
+    }
+  };
+
+  const openEditRecurring = (r: RecurringTransaction) => {
+    setEditingRecurring(r);
+    setCreateModal('recurring');
+    setRecurringForm({
+      type: r.type,
+      categoryId: r.categoryId,
+      amount: String(r.amount),
+      label: r.label,
+      dayOfMonth: r.dayOfMonth,
+    });
+    setRecurringPickerDate(new Date(new Date().getFullYear(), new Date().getMonth(), r.dayOfMonth));
+  };
+
+  const categoriesByType = useMemo(
+    () => ({
+      income: categories.filter(c => c.type === 'income'),
+      expense: categories.filter(c => c.type === 'expense'),
+    }),
+    [categories],
+  );
+  const getDefaultRecurringCategoryId = (type: TransactionType) => {
+    const options = categoriesByType[type];
+    if (!options.length) return '';
+    const preferredName = type === 'income' ? 'salary' : 'other';
+    return options.find(category => category.name.trim().toLowerCase() === preferredName)?.id || options[0].id;
+  };
+
+  const onSaveRecurring = async () => {
+    const amount = parseFloat(recurringForm.amount);
+    if (!recurringForm.categoryId) {
+      await alert('Validation', 'Please select a category.', 'warning');
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      await alert('Validation', 'Amount must be greater than zero.', 'warning');
+      return;
+    }
+    await withLoading(async () => {
+      if (editingRecurring) {
+        await updateRecurring(editingRecurring.id, {
+          type: recurringForm.type,
+          categoryId: recurringForm.categoryId,
+          amount,
+          label: recurringForm.label.trim() || 'Salary',
+          dayOfMonth: recurringForm.dayOfMonth,
+        });
+      } else {
+        await addRecurring({
+          type: recurringForm.type,
+          categoryId: recurringForm.categoryId,
+          amount,
+          label: recurringForm.label.trim() || 'Salary',
+          dayOfMonth: recurringForm.dayOfMonth,
+        });
+      }
+      emitRefresh('dashboard');
+      emitRefresh('transactions');
+      setCreateModal(null);
+      setEditingRecurring(null);
+    }, editingRecurring ? 'Monthly auto entry updated.' : 'Monthly auto entry added.');
   };
 
   const onCreateCommonData = async () => {
@@ -124,6 +213,63 @@ export const SettingsScreen = () => {
         </AppCard></AnimatedSection>
 
         <AnimatedSection delay={60}><AppCard>
+          <AppText variant="heading">Monthly Auto Credit</AppText>
+          <AppText variant="caption" color={colors.textSecondary} style={styles.captionBlock}>
+            Add salary by default, or choose any other income or expense that should be created automatically every month on the date you select.
+          </AppText>
+          {recurringLoading ? (
+            <Loading label="Loading..." />
+          ) : (
+            <View style={styles.recurringList}>
+              {recurring.map(r => (
+                <View key={r.id} style={styles.recurringRow}>
+                  <View style={styles.recurringMeta}>
+                    <AppText variant="bodyStrong">{r.label}</AppText>
+                    <AppText variant="caption" color={colors.textSecondary}>
+                      {formatCurrency(r.amount, currency)} · Day {r.dayOfMonth} · {categoryMap[r.categoryId]?.name || '—'}
+                    </AppText>
+                  </View>
+                  <View style={styles.recurringActions}>
+                    <Switch
+                      value={r.isActive}
+                      onValueChange={async v => {
+                        try {
+                          await updateRecurring(r.id, { isActive: v });
+                          emitRefresh('dashboard');
+                        } catch {}
+                      }}
+                      trackColor={{ false: colors.border, true: colors.primarySoft }}
+                      thumbColor={r.isActive ? colors.primary : '#FFFFFF'}
+                    />
+                    <Pressable onPress={() => openEditRecurring(r)} style={styles.iconBtn}>
+                      <Icon name="pencil" size={18} color={colors.primary} />
+                    </Pressable>
+                    <Pressable
+                      onPress={async () => {
+                        const ok = await confirm('Remove?', `Remove "${r.label}" from auto credit?`, 'Remove', 'Cancel');
+                        if (ok) {
+                          await removeRecurring(r.id);
+                          emitRefresh('dashboard');
+                        }
+                      }}
+                      style={styles.iconBtn}
+                    >
+                      <Icon name="delete-outline" size={18} color={colors.danger} />
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+          <AppButton
+            title="Add Monthly Auto Credit"
+            iconName="calendar-plus"
+            variant="outline"
+            onPress={() => openCreate('recurring')}
+          />
+        </AppCard></AnimatedSection>
+
+        <AnimatedSection delay={70}><AppCard>
           <AppText variant="heading">Currency</AppText>
           {currencyLoading ? <Loading label="Loading currency..." /> : (
             <View style={styles.currencyContent}>
@@ -141,7 +287,7 @@ export const SettingsScreen = () => {
         <AnimatedSection delay={120}><AppCard>
           <AppText variant="heading">Backup</AppText>
           <View style={styles.buttonGap}>
-            <AppButton title={busy ? 'Exporting...' : 'Export to Excel'} iconName="file-excel-box-outline" onPress={async () => withLoading(async () => { await exportToExcel(); }, 'Excel file exported.')} loading={busy} />
+            <AppButton title="Export Transactions CSV" iconName="file-delimited-outline" variant="outline" onPress={async () => withLoading(async () => { await exportTransactionsToCsv(); }, 'CSV file exported.')} disabled={busy} />
             <AppButton title="Export to JSON" iconName="file-code-outline" variant="outline" onPress={async () => withLoading(async () => { await exportToJson(); }, 'JSON backup exported.')} disabled={busy} />
             <AppButton title="Import from JSON" iconName="file-import-outline" variant="outline" onPress={async () => withLoading(async () => importFromJson(), 'JSON backup imported.')} disabled={busy} />
           </View>
@@ -150,6 +296,7 @@ export const SettingsScreen = () => {
         <AnimatedSection delay={150}><AppCard>
           <AppText variant="heading">Account</AppText>
           <View style={styles.buttonGap}>
+            <AppButton title="Profile" iconName="account-cog-outline" variant="soft" onPress={() => navigation.navigate('Profile')} />
             <AppButton title="Logout" iconName="logout" variant="outline" onPress={logout} />
           </View>
         </AppCard></AnimatedSection>
@@ -167,40 +314,130 @@ export const SettingsScreen = () => {
 
       <AppModal
         visible={!!createModal}
-        title={createModal === 'category' ? 'Add Category' : 'Add Group'}
-        onClose={() => setCreateModal(null)}>
-        <View style={styles.modalBody}>
-          <AppInput
-            label="Name"
-            value={createName}
-            onChangeText={setCreateName}
-            placeholder={createModal === 'category' ? 'Enter category name' : 'Enter group name'}
-          />
-          {createModal === 'category' ? (
-            <SegmentedTabs
-              items={[
-                { key: 'expense', label: 'Expense' },
-                { key: 'income', label: 'Income' },
-              ]}
-              value={categoryType}
-              onChange={value => setCategoryType(value as TransactionType)}
-            />
-          ) : null}
-          <AppButton
-            title={createModal === 'category' ? 'Save Category' : 'Save Group'}
-            iconName="plus"
-            onPress={onCreateCommonData}
-            loading={busy}
-          />
-          <AppButton
-            title="Manage All Common Data"
-            variant="outline"
-            onPress={() => {
-              const tab = createModal || 'category';
-              setCreateModal(null);
-              navigation.navigate('CommonData', { tab });
+        title={
+          createModal === 'recurring'
+            ? editingRecurring
+              ? 'Edit Monthly Auto Credit'
+              : 'Add Monthly Auto Credit'
+            : createModal === 'category'
+              ? 'Add Category'
+              : 'Add Group'
+        }
+        onClose={() => setCreateModal(null)}
+        overlay={(
+          <DatePickerModal
+            visible={showRecurringDatePicker}
+            embedded
+            value={recurringPickerDate}
+            title="Select Monthly Date"
+            onClose={() => setShowRecurringDatePicker(false)}
+            onConfirm={value => {
+              setRecurringPickerDate(value);
+              setRecurringForm(current => ({ ...current, dayOfMonth: value.getDate() }));
+              setShowRecurringDatePicker(false);
             }}
           />
+        )}>
+        <View style={styles.modalBody}>
+          {createModal === 'recurring' ? (
+            <>
+              <AppInput
+                label="Title"
+                value={recurringForm.label}
+                onChangeText={v => setRecurringForm(f => ({ ...f, label: v }))}
+                placeholder="e.g. Salary, Rent, Bonus"
+              />
+              <SegmentedTabs
+                items={[
+                  { key: 'income', label: 'Income' },
+                  { key: 'expense', label: 'Expense' },
+                ]}
+                value={recurringForm.type}
+                onChange={v => {
+                  const nextType = v as TransactionType;
+                  setRecurringForm(f => ({
+                    ...f,
+                    type: nextType,
+                    categoryId: getDefaultRecurringCategoryId(nextType),
+                    label: nextType === 'income' && (!f.label.trim() || f.label === 'Salary') ? 'Salary' : f.label,
+                  }));
+                }}
+              />
+              <AppSelect
+                label="Category"
+                value={recurringForm.categoryId}
+                items={categoriesByType[recurringForm.type].map(c => ({ label: c.name, value: c.id }))}
+                onValueChange={v => setRecurringForm(f => ({ ...f, categoryId: v }))}
+                placeholder="Select category"
+              />
+              {categoriesByType[recurringForm.type].length === 0 && (
+                <AppButton
+                  title="Add category first"
+                  variant="soft"
+                  onPress={() => {
+                    setCreateModal(null);
+                    navigation.navigate('CommonData', { tab: recurringForm.type === 'income' ? 'category' : 'category' });
+                  }}
+                />
+              )}
+              <AppInput
+                label="Amount"
+                value={recurringForm.amount}
+                onChangeText={v => setRecurringForm(f => ({ ...f, amount: v }))}
+                keyboardType="decimal-pad"
+                placeholder="0"
+              />
+              <AppButton
+                title={`Date each month: ${recurringForm.dayOfMonth}`}
+                iconName="calendar"
+                variant="outline"
+                onPress={() => setShowRecurringDatePicker(true)}
+              />
+              <AppText variant="caption" color={colors.textSecondary}>
+                This entry will be created every month on day {recurringForm.dayOfMonth}.
+              </AppText>
+              <AppButton
+                title={editingRecurring ? 'Update Monthly Entry' : 'Save Monthly Entry'}
+                iconName="plus"
+                onPress={onSaveRecurring}
+                loading={busy}
+              />
+            </>
+          ) : (
+            <>
+              <AppInput
+                label="Name"
+                value={createName}
+                onChangeText={setCreateName}
+                placeholder={createModal === 'category' ? 'Enter category name' : 'Enter group name'}
+              />
+              {createModal === 'category' ? (
+                <SegmentedTabs
+                  items={[
+                    { key: 'expense', label: 'Expense' },
+                    { key: 'income', label: 'Income' },
+                  ]}
+                  value={categoryType}
+                  onChange={value => setCategoryType(value as TransactionType)}
+                />
+              ) : null}
+              <AppButton
+                title={createModal === 'category' ? 'Save Category' : 'Save Group'}
+                iconName="plus"
+                onPress={onCreateCommonData}
+                loading={busy}
+              />
+              <AppButton
+                title="Manage All Common Data"
+                variant="outline"
+                onPress={() => {
+                  const tab = createModal || 'category';
+                  setCreateModal(null);
+                  navigation.navigate('CommonData', { tab });
+                }}
+              />
+            </>
+          )}
         </View>
       </AppModal>
     </View>
@@ -234,6 +471,19 @@ const createStyles = (colors: AppColors, mode: 'light' | 'dark') =>
       flex: 1,
     },
     buttonGap: { marginTop: spacing.sm, gap: spacing.sm },
+    captionBlock: { marginBottom: spacing.sm },
+    recurringList: { marginBottom: spacing.md, gap: spacing.sm },
+    recurringRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    recurringMeta: { flex: 1 },
+    recurringActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    iconBtn: { padding: spacing.xs },
     modalBody: {
       gap: spacing.md,
       paddingBottom: spacing.sm,

@@ -11,6 +11,9 @@ export type RootTabParamList = {
 export type DashboardStackParamList = {
   DashboardHome: { refreshAt?: number } | undefined;
   Alerts: undefined;
+  Charts: undefined;
+  Budgets: undefined;
+  Insights: undefined;
 };
 
 export type TransactionsStackParamList = {
@@ -28,4 +31,5 @@ export type SplitsStackParamList = {
 export type SettingsStackParamList = {
   SettingsHome: { refreshAt?: number } | undefined;
   CommonData: { tab?: 'category' | 'person' | 'group' } | undefined;
+  Profile: undefined;
 };

@@ -12,6 +12,12 @@ import { exportFullApi, importFullApi } from './backend';
 
 const XLSX_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const CSV_MIME = 'text/csv';
+
+const escapeCsvCell = (value: unknown) => {
+  const normalized = String(value ?? '').replace(/"/g, '""');
+  return /[",\n]/.test(normalized) ? `"${normalized}"` : normalized;
+};
 
 const normalizeDateField = (item: Record<string, unknown>) => {
   const output = { ...item };
@@ -69,6 +75,46 @@ export const exportToExcel = async () => {
 };
 
 export const exportDebtSummaryToExcel = exportToExcel;
+
+export const exportTransactionsToCsv = async () => {
+  const data = await exportFullApi();
+  const categories = ((data.categories as Array<{ id: string; name: string }>) || []).reduce<Record<string, string>>(
+    (acc, category) => {
+      acc[category.id] = category.name;
+      return acc;
+    },
+    {},
+  );
+  const transactions = (data.transactions as Array<Record<string, unknown>>) || [];
+
+  const headers = ['Date', 'Type', 'Category', 'Amount', 'Note'];
+  const rows = transactions.map(transaction => ([
+    transaction.date,
+    transaction.type,
+    categories[String(transaction.categoryId || '')] || '',
+    transaction.amount,
+    transaction.note,
+  ]));
+
+  const csv = [headers, ...rows]
+    .map(row => row.map(escapeCsvCell).join(','))
+    .join('\n');
+
+  const filename = `Transactions_${dayjs().format('YYYY-MM-DD')}.csv`;
+  const filePath = `${RNFS.CachesDirectoryPath}/${filename}`;
+  await RNFS.writeFile(filePath, csv, 'utf8');
+
+  await Share.open({
+    title: 'Export Transactions CSV',
+    url: `file://${filePath}`,
+    type: CSV_MIME,
+    failOnCancel: false,
+    saveToFiles: true,
+    filename,
+  });
+
+  return filePath;
+};
 
 export const exportToJson = async () => {
   const payload = await exportFullApi();

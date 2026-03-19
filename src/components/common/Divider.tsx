@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { AppColors, spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
+import { AppColors, spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
 
 export const Divider = () => {
   const { colors } = useAppTheme();

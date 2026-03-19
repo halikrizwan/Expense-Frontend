@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { useAppTheme } from '../context/ThemeContext';
-import { AppText } from './AppText';
+import { useAppTheme } from '../../context/ThemeContext';
+import { AppText } from '../common/AppText';
 
 export interface DonutSlice {
   label: string;

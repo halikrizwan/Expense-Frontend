@@ -17,6 +17,7 @@ interface AuthContextValue {
   signup: (payload: { email: string; password: string; displayName?: string }) => Promise<void>;
   logout: () => Promise<void>;
   bootstrap: () => Promise<void>;
+  syncUser: (nextUser: User) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -35,6 +36,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     await clearAuthSession();
   }, []);
+
+  const syncUser = useCallback(async (nextUser: User) => {
+    setUser(nextUser);
+    if (!accessToken || !refreshTokenMemory) return;
+    await saveAuthSession({
+      accessToken,
+      refreshToken: refreshTokenMemory,
+      user: nextUser,
+    });
+  }, [accessToken]);
 
   const refreshSession = useCallback(async (): Promise<string | null> => {
     if (!refreshTokenMemory) return null;
@@ -151,8 +162,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [clearSession]);
 
   const value = useMemo(
-    () => ({ user, accessToken, loading, login, signup, logout, bootstrap }),
-    [accessToken, bootstrap, loading, login, logout, signup, user],
+    () => ({ user, accessToken, loading, login, signup, logout, bootstrap, syncUser }),
+    [accessToken, bootstrap, loading, login, logout, signup, syncUser, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,18 +1,19 @@
 import React, { useMemo } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { AppColors, radius, spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
-import { AppText } from './AppText';
+import { AppColors, radius, spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { AppText } from '../common/AppText';
 
 interface Props {
   visible: boolean;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  overlay?: React.ReactNode;
 }
 
-export const AppModal: React.FC<Props> = ({ visible, title, onClose, children }) => {
+export const AppModal: React.FC<Props> = ({ visible, title, onClose, children, overlay }) => {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -28,9 +29,12 @@ export const AppModal: React.FC<Props> = ({ visible, title, onClose, children })
               <Icon name="close" size={18} color={colors.primary} />
             </TouchableOpacity>
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formContent}>
-            {children}
-          </ScrollView>
+          <View style={styles.contentWrap}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.formContent}>
+              {children}
+            </ScrollView>
+            {overlay}
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -68,5 +72,8 @@ const createStyles = (colors: AppColors) =>
     formContent: {
       gap: spacing.md,
       paddingBottom: spacing.sm,
+    },
+    contentWrap: {
+      position: 'relative',
     },
   });

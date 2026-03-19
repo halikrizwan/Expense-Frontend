@@ -10,6 +10,29 @@ export interface Category {
   updatedAt: string;
 }
 
+export interface Budget {
+  id: string;
+  categoryId: string;
+  amount: number;
+  createdAt: string;
+  updatedAt: string;
+  category?: Category;
+}
+
+export interface RecurringTransaction {
+  id: string;
+  type: TransactionType;
+  categoryId: string;
+  amount: number;
+  label: string;
+  dayOfMonth: number;
+  isActive: boolean;
+  lastProcessedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  category?: Category;
+}
+
 export interface Transaction {
   id: string;
   type: TransactionType;

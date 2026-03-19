@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, TextProps } from 'react-native';
-import { typography } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
+import { typography } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
 
 type Variant =
   | 'titleLg'

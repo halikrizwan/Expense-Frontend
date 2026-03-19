@@ -1,3 +1,7 @@
+/**
+ * @deprecated This module is unused. The app uses the backend API exclusively.
+ * Kept for reference; safe to remove along with react-native-sqlite-storage dependency.
+ */
 import SQLite from 'react-native-sqlite-storage';
 import { seedCategories } from '../constants/categories';
 import { ThemeMode } from '../constants/theme';

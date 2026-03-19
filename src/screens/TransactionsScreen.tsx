@@ -1,12 +1,11 @@
 import dayjs from 'dayjs';
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, ListRenderItem, Modal, PermissionsAndroid, Platform, Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { errorCodes, isErrorWithCode, pick, types } from '@react-native-documents/picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppSelect, AppText, Chip, EmptyState, Loading, SegmentedTabs } from '../components';
+import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppSelect, AppText, Chip, DatePickerModal, EmptyState, Loading, SegmentedTabs } from '../components';
 import { useAppAlert } from '../context/AppAlertContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { colors, radius, spacing } from '../constants/theme';
@@ -75,16 +74,15 @@ export const TransactionsScreen = () => {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [form, setForm] = useState<FormState>(defaultForm);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [existingBills, setExistingBills] = useState<TransactionBillAttachment[]>([]);
   const [newBills, setNewBills] = useState<PickedBillFile[]>([]);
   const [removingBillIds, setRemovingBillIds] = useState<string[]>([]);
   const [previewUri, setPreviewUri] = useState('');
-  const [showFilterDatePicker, setShowFilterDatePicker] = useState(false);
   const [activeFilterDateField, setActiveFilterDateField] = useState<'from' | 'to' | null>(null);
   const [calendarFocusDate, setCalendarFocusDate] = useState(dayjs());
-  const [showFocusCalendarPicker, setShowFocusCalendarPicker] = useState(false);
+  const [activeDatePicker, setActiveDatePicker] = useState<'form' | 'filter' | 'focus' | null>(null);
+  const [pickerDate, setPickerDate] = useState(new Date());
 
   const filteredCategories = useMemo(() => categories.filter(item => item.type === form.type), [categories, form.type]);
 
@@ -221,26 +219,54 @@ export const TransactionsScreen = () => {
 
   const openFilterDatePicker = (field: 'from' | 'to') => {
     setActiveFilterDateField(field);
-    setShowFilterDatePicker(true);
+    setPickerDate(
+      field === 'to' && filters.toDate
+        ? new Date(filters.toDate)
+        : field === 'from' && filters.fromDate
+          ? new Date(filters.fromDate)
+          : new Date(),
+    );
+    setActiveDatePicker('filter');
   };
 
-  const onFilterDateChange = (_: unknown, dateValue?: Date) => {
-    setShowFilterDatePicker(false);
-    if (!dateValue || !activeFilterDateField) return;
-    const formatted = dayjs(dateValue).format('YYYY-MM-DD');
-    setFilters(current => ({
-      ...current,
-      [activeFilterDateField === 'from' ? 'fromDate' : 'toDate']: formatted,
-    }));
+  const onConfirmPickedDate = (dateValue: Date) => {
+    if (activeDatePicker === 'form') {
+      setForm(current => ({ ...current, date: dateValue }));
+      setActiveDatePicker(null);
+      return;
+    }
+
+    if (activeDatePicker === 'focus') {
+      const next = dayjs(dateValue);
+      setCalendarFocusDate(next);
+      onSelectDay(next);
+      setActiveDatePicker(null);
+      return;
+    }
+
+    if (activeDatePicker === 'filter' && activeFilterDateField) {
+      const formatted = dayjs(dateValue).format('YYYY-MM-DD');
+      setFilters(current => ({
+        ...current,
+        [activeFilterDateField === 'from' ? 'fromDate' : 'toDate']: formatted,
+      }));
+    }
+
+    setActiveDatePicker(null);
   };
 
-  const weekDays = useMemo(() => {
-    const start = calendarFocusDate.startOf('week');
-    return Array.from({ length: 7 }, (_, index) => start.add(index, 'day'));
-  }, [calendarFocusDate]);
+  const openTransactionDatePicker = () => {
+    setPickerDate(form.date);
+    setActiveDatePicker('form');
+  };
+
+  const openFocusDatePicker = () => {
+    setPickerDate(calendarFocusDate.toDate());
+    setActiveDatePicker('focus');
+  };
 
   const onSelectDay = (dateValue: dayjs.Dayjs) => {
-    const formatted = dateValue.format('YYYY-MM-DD');
+    const formatted = dayjs(dateValue).format('YYYY-MM-DD');
     setFilters(current => ({
       ...current,
       fromDate: formatted,
@@ -248,6 +274,11 @@ export const TransactionsScreen = () => {
     }));
     setCalendarFocusDate(dateValue);
   };
+
+  const weekDays = useMemo(() => {
+    const start = calendarFocusDate.startOf('week');
+    return Array.from({ length: 7 }, (_, index) => start.add(index, 'day'));
+  }, [calendarFocusDate]);
 
   const onAddCategory = async () => {
     if (!newCategoryName.trim()) return;
@@ -290,7 +321,7 @@ export const TransactionsScreen = () => {
             <AnimatedSection delay={60}><AppCard>
               <View style={styles.calendarHeader}>
                 <AppText variant="label" color={colors.textSecondary}>{calendarFocusDate.format('MMMM YYYY')}</AppText>
-                <Pressable style={styles.calendarBtn} onPress={() => setShowFocusCalendarPicker(true)}>
+                <Pressable style={styles.calendarBtn} onPress={openFocusDatePicker}>
                   <Icon name="calendar-month-outline" size={18} color={colors.primary} />
                 </Pressable>
               </View>
@@ -306,20 +337,6 @@ export const TransactionsScreen = () => {
                   );
                 })}
               </View>
-              {showFocusCalendarPicker ? (
-                <DateTimePicker
-                  mode="date"
-                  display="default"
-                  value={calendarFocusDate.toDate()}
-                  onChange={(_, value) => {
-                    setShowFocusCalendarPicker(false);
-                    if (!value) return;
-                    const next = dayjs(value);
-                    setCalendarFocusDate(next);
-                    onSelectDay(next);
-                  }}
-                />
-              ) : null}
             </AppCard></AnimatedSection>
 
             <AnimatedSection delay={120} style={styles.summaryCards}>
@@ -358,20 +375,6 @@ export const TransactionsScreen = () => {
                   style={styles.filterDateBtn}
                 />
               </View>
-              {showFilterDatePicker ? (
-                <DateTimePicker
-                  mode="date"
-                  display="default"
-                  value={
-                    activeFilterDateField === 'to' && filters.toDate
-                      ? new Date(filters.toDate)
-                      : activeFilterDateField === 'from' && filters.fromDate
-                        ? new Date(filters.fromDate)
-                        : new Date()
-                  }
-                  onChange={onFilterDateChange}
-                />
-              ) : null}
             </AppCard></AnimatedSection>
           </View>
         }
@@ -379,7 +382,36 @@ export const TransactionsScreen = () => {
         contentContainerStyle={styles.content}
       />
 
-      <AppModal visible={modalVisible} title={form.id ? 'Edit Transaction' : 'Add Transaction'} onClose={resetAndClose}>
+      <DatePickerModal
+        visible={!!activeDatePicker && activeDatePicker !== 'form'}
+        value={pickerDate}
+        title={
+          activeDatePicker === 'form'
+            ? 'Select Transaction Date'
+            : activeDatePicker === 'focus'
+              ? 'Select Focus Date'
+              : activeFilterDateField === 'from'
+                ? 'Select From Date'
+                : 'Select To Date'
+        }
+        onClose={() => setActiveDatePicker(null)}
+        onConfirm={onConfirmPickedDate}
+      />
+
+      <AppModal
+        visible={modalVisible}
+        title={form.id ? 'Edit Transaction' : 'Add Transaction'}
+        onClose={resetAndClose}
+        overlay={(
+          <DatePickerModal
+            visible={activeDatePicker === 'form'}
+            embedded
+            value={pickerDate}
+            title="Select Transaction Date"
+            onClose={() => setActiveDatePicker(null)}
+            onConfirm={onConfirmPickedDate}
+          />
+        )}>
         <ScrollView contentContainerStyle={styles.modalBody}>
           <SegmentedTabs items={[{ key: 'income', label: 'Income' }, { key: 'expense', label: 'Expense' }]} value={form.type} onChange={value => setForm(current => ({ ...current, type: value as TransactionType, categoryId: '' }))} />
 
@@ -436,8 +468,7 @@ export const TransactionsScreen = () => {
             </View>
           ) : null}
 
-          <AppButton title={`Date: ${formatDate(form.date)}`} iconName="calendar" variant="outline" onPress={() => setShowDatePicker(true)} />
-          {showDatePicker ? <DateTimePicker mode="date" display="default" value={form.date} onChange={(_, d) => { setShowDatePicker(false); if (d) setForm(current => ({ ...current, date: d })); }} /> : null}
+          <AppButton title={`Date: ${formatDate(form.date)}`} iconName="calendar" variant="outline" onPress={openTransactionDatePicker} />
           <AppButton title={form.id ? 'Update' : 'Save'} iconName="content-save-outline" onPress={onSave} />
         </ScrollView>
       </AppModal>

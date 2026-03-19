@@ -11,6 +11,8 @@ export const useSettingsCurrency = () => {
     try {
       const settings = await getSettingsApi();
       setCurrencyState(settings.currency || 'AED');
+    } catch {
+      // Keep previous currency on error
     } finally {
       setLoading(false);
     }

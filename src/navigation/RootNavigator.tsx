@@ -18,11 +18,15 @@ import {
 } from './types';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { AlertsScreen } from '../screens/AlertsScreen';
+import { BudgetsScreen } from '../screens/BudgetsScreen';
+import { ChartsScreen } from '../screens/ChartsScreen';
+import { InsightsScreen } from '../screens/InsightsScreen';
 import { TransactionsScreen } from '../screens/TransactionsScreen';
 import { DebtsScreen } from '../screens/DebtsScreen';
 import { SplitsScreen } from '../screens/SplitsScreen';
 import { CommonDataScreen } from '../screens/CommonDataScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { ProfileScreen } from '../screens/ProfileScreen';
 import { emitRefresh } from '../services/refreshBus';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -93,6 +97,9 @@ const DashboardStackScreen = () => (
   <DashboardStack.Navigator>
     <DashboardStack.Screen name="DashboardHome" component={DashboardScreen} options={{ headerShown: false }} />
     <DashboardStack.Screen name="Alerts" component={AlertsScreen} options={{ headerShown: false }} />
+    <DashboardStack.Screen name="Charts" component={ChartsScreen} options={{ headerShown: false }} />
+    <DashboardStack.Screen name="Budgets" component={BudgetsScreen} options={{ headerShown: false }} />
+    <DashboardStack.Screen name="Insights" component={InsightsScreen} options={{ headerShown: false }} />
   </DashboardStack.Navigator>
 );
 
@@ -118,6 +125,7 @@ const SettingsStackScreen = () => (
   <SettingsStack.Navigator>
     <SettingsStack.Screen name="SettingsHome" component={SettingsScreen} options={{ headerShown: false }} />
     <SettingsStack.Screen name="CommonData" component={CommonDataScreen} options={{ headerShown: false }} />
+    <SettingsStack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
   </SettingsStack.Navigator>
 );
 

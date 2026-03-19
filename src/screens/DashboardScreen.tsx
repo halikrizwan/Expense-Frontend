@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { FlatList, ListRenderItem, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -10,8 +10,8 @@ import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { colors, radius, spacing } from '../constants/theme';
 import { useDashboardSummary } from '../hooks/useDashboardSummary';
+import { useNotifications } from '../hooks/useNotifications';
 import { useSettingsCurrency } from '../hooks/useSettingsCurrency';
-import { useUserRequests } from '../hooks/useUserRequests';
 import { DashboardStackParamList } from '../navigation/types';
 import { useTransactions } from '../hooks/useTransactions';
 import { subscribeRefresh } from '../services/refreshBus';
@@ -71,7 +71,7 @@ export const DashboardScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<DashboardStackParamList>>();
   const { user } = useAuth();
   const { summary, recentActivity, payments, loading, refresh } = useDashboardSummary();
-  const { count: requestCount, refreshCount } = useUserRequests();
+  const { count: notificationCount, refreshNotifications } = useNotifications();
   const { currency } = useSettingsCurrency();
   const { transactions, categoryMap, refresh: refreshTransactions } = useTransactions();
   const [activeBalanceIndex, setActiveBalanceIndex] = useState(0);
@@ -114,14 +114,8 @@ export const DashboardScreen = () => {
   useEffect(() => subscribeRefresh('dashboard', () => {
     refresh();
     refreshTransactions();
-    refreshCount();
-  }), [refresh, refreshTransactions, refreshCount]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      refreshCount();
-    }, [refreshCount]),
-  );
+    refreshNotifications();
+  }), [refresh, refreshTransactions, refreshNotifications]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 6, backgroundColor: themeColors.background }]}>
@@ -138,15 +132,20 @@ export const DashboardScreen = () => {
                 title={`Hi, ${user?.displayName || user?.email || 'User'}`}
                 subtitle="Easy money overview"
                 right={(
+                  <View style={styles.headerRight}>
+                  <Pressable onPress={() => navigation.navigate('Insights')} style={styles.bellBtn}>
+                    <Icon name="lightbulb-outline" size={20} color={colors.textSecondary} />
+                  </Pressable>
                   <Pressable style={styles.bellBtn} onPress={() => navigation.navigate('Alerts')}>
                     <Icon name="bell-outline" size={20} color={colors.textSecondary} />
-                    {requestCount > 0 ? (
+                    {notificationCount > 0 ? (
                       <View style={styles.bellBadge}>
-                        <AppText variant="caption" color="#FFF">{requestCount > 99 ? '99+' : String(requestCount)}</AppText>
+                        <AppText variant="caption" color="#FFF">{notificationCount > 99 ? '99+' : String(notificationCount)}</AppText>
                       </View>
                     ) : null}
                   </Pressable>
-                )}
+                </View>
+              )}
               />
             </AnimatedSection>
 
@@ -201,7 +200,12 @@ export const DashboardScreen = () => {
 
             <AnimatedSection delay={180}>
               <AppCard>
-              <AppText variant="heading">Quick Actions</AppText>
+              <View style={styles.quickHeader}>
+                <AppText variant="heading">Quick Actions</AppText>
+                <Pressable onPress={() => navigation.navigate('Budgets')}>
+                  <AppText variant="caption" color={colors.primary}>Budgets</AppText>
+                </Pressable>
+              </View>
               <View style={styles.quickWrap}>
                 {quickActions.map(action => (
                   <QuickActionButton
@@ -219,7 +223,10 @@ export const DashboardScreen = () => {
               <AppCard>
               <View style={styles.analyticsHeader}>
                 <AppText variant="heading">Analytics</AppText>
-                <AppText variant="caption" color={colors.textSecondary}>Expenses</AppText>
+                <Pressable onPress={() => navigation.navigate('Charts')} style={styles.analyticsLink}>
+                  <AppText variant="caption" color={colors.primary}>View all</AppText>
+                  <Icon name="chevron-right" size={16} color={colors.primary} />
+                </Pressable>
               </View>
               {expenseSlices.length ? (
                 <View style={styles.analyticsRow}>
@@ -294,6 +301,7 @@ const styles = StyleSheet.create({
   dot: { width: 24, height: 4, borderRadius: 999 },
   dotActive: { opacity: 1, backgroundColor: '#8F94FF' },
   dotInactive: { opacity: 0.35, backgroundColor: '#8F94FF' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   bellBtn: {
     width: 36,
     height: 36,
@@ -320,6 +328,7 @@ const styles = StyleSheet.create({
   kpiCard: { flex: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.xs },
   kpiCardPrimary: { backgroundColor: colors.primary },
   kpiCardSecondary: { backgroundColor: colors.secondary },
+  quickHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   quickWrap: { marginTop: spacing.md, flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   quickItemWrap: {
     width: '23%',
@@ -333,6 +342,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   analyticsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  analyticsLink: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   analyticsRow: { marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   legendWrap: { flex: 1, gap: spacing.sm },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

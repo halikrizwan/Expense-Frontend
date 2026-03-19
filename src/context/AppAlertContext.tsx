@@ -152,6 +152,7 @@ const createStyles = () =>
     message: { textAlign: 'center', lineHeight: 20 },
     actions: {
       marginTop: spacing.sm,
+      marginBottom: spacing.xs,
       flexDirection: 'row',
       gap: spacing.sm,
     },

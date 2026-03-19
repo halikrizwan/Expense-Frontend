@@ -20,12 +20,14 @@ export const useTransactions = () => {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [txList, categoryList] = await Promise.all([
+      const [txResponse, categoryList] = await Promise.all([
         getTransactionsApi(filters),
         getCategoriesApi(),
       ]);
-      setTransactions(txList);
+      setTransactions(txResponse.data);
       setCategories(categoryList);
+    } catch {
+      // Keep previous data on error
     } finally {
       setLoading(false);
     }

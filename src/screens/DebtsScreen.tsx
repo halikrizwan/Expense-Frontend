@@ -1,17 +1,15 @@
 import dayjs from 'dayjs';
 import React, { memo, useEffect, useMemo, useState } from 'react';
-import { FlatList, ListRenderItem, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { FlatList, ListRenderItem, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppSelect, AppText, Chip, EmptyState, Loading, SegmentedTabs } from '../components';
+import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppSelect, AppText, Chip, DatePickerModal, EmptyState, Loading, SegmentedTabs } from '../components';
 import { useAppAlert } from '../context/AppAlertContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { colors, radius, spacing } from '../constants/theme';
 import { useDebts } from '../hooks/useDebts';
 import { useSettingsCurrency } from '../hooks/useSettingsCurrency';
-import { exportDebtSummaryToExcel } from '../services/exportService';
 import { Debt, DebtDirection } from '../types/entities';
 import { formatCurrency, formatDate } from '../utils/format';
 import { subscribeRefresh } from '../services/refreshBus';
@@ -84,10 +82,8 @@ export const DebtsScreen = () => {
   const [paymentDate, setPaymentDate] = useState(new Date());
   const [paymentNote, setPaymentNote] = useState('');
   const [activeDebtId, setActiveDebtId] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showDueDatePicker, setShowDueDatePicker] = useState(false);
-  const [showPaymentDatePicker, setShowPaymentDatePicker] = useState(false);
-  const [exportingDebt, setExportingDebt] = useState(false);
+  const [activeDatePicker, setActiveDatePicker] = useState<'debt' | 'due' | 'payment' | null>(null);
+  const [pickerDate, setPickerDate] = useState(new Date());
 
   const activeDebt = useMemo(() => debts.find(d => d.id === activeDebtId), [activeDebtId, debts]);
   const totals = useMemo(() => ({
@@ -128,6 +124,22 @@ export const DebtsScreen = () => {
     }
   };
 
+  const openDebtDatePicker = (field: 'debt' | 'due' | 'payment') => {
+    setPickerDate(field === 'debt' ? debtForm.date : field === 'due' ? debtForm.dueDate : paymentDate);
+    setActiveDatePicker(field);
+  };
+
+  const onConfirmDate = (value: Date) => {
+    if (activeDatePicker === 'debt') {
+      setDebtForm(current => ({ ...current, date: value }));
+    } else if (activeDatePicker === 'due') {
+      setDebtForm(current => ({ ...current, dueDate: value }));
+    } else if (activeDatePicker === 'payment') {
+      setPaymentDate(value);
+    }
+    setActiveDatePicker(null);
+  };
+
   const renderItem: ListRenderItem<Debt> = ({ item }) => <DebtRow
     item={item}
     personName={peopleMap[item.personId]?.name || 'Unknown'}
@@ -164,19 +176,6 @@ export const DebtsScreen = () => {
     }}
   />;
 
-  const onExportDebtSummary = async () => {
-    if (exportingDebt) return;
-    setExportingDebt(true);
-    try {
-      await exportDebtSummaryToExcel();
-      await alert('Success', 'Debt summary Excel exported.', 'success');
-    } catch (error) {
-      await alert('Error', error instanceof Error ? error.message : 'Could not export debt summary.', 'error');
-    } finally {
-      setExportingDebt(false);
-    }
-  };
-
   useEffect(() => subscribeRefresh('debts', refresh), [refresh]);
 
   return (
@@ -193,11 +192,6 @@ export const DebtsScreen = () => {
               setDebtForm(defaultDebtForm);
               setDebtModal(true);
             }} />
-            <Pressable
-              onPress={onExportDebtSummary}
-              style={[styles.excelBtn, exportingDebt && styles.excelBtnDisabled]}>
-              <Icon name="file-excel-box-outline" size={20} color="#FFF" />
-            </Pressable>
           </View>} /></AnimatedSection>
           <AnimatedSection delay={60} style={styles.summaryRow}>
             <View style={[styles.summaryCard, { backgroundColor: colors.secondary }]}>
@@ -232,7 +226,20 @@ export const DebtsScreen = () => {
         </View>
       </AppModal>
 
-      <AppModal visible={debtModal} title="Add Debt" onClose={() => setDebtModal(false)}>
+      <AppModal
+        visible={debtModal}
+        title="Add Debt"
+        onClose={() => setDebtModal(false)}
+        overlay={(
+          <DatePickerModal
+            visible={activeDatePicker === 'debt' || activeDatePicker === 'due'}
+            embedded
+            value={pickerDate}
+            title={activeDatePicker === 'due' ? 'Select Due Date' : 'Select Debt Date'}
+            onClose={() => setActiveDatePicker(null)}
+            onConfirm={onConfirmDate}
+          />
+        )}>
         <ScrollView contentContainerStyle={styles.modalBody}>
           <SegmentedTabs items={[{ key: 'i_owe', label: 'I Owe' }, { key: 'owed_to_me', label: 'Owed To Me' }]} value={debtForm.direction} onChange={v => setDebtForm(c => ({ ...c, direction: v as DebtDirection }))} />
           <AppSelect
@@ -244,26 +251,36 @@ export const DebtsScreen = () => {
           />
           <AppInput label="Amount" keyboardType="decimal-pad" value={debtForm.amount} onChangeText={v => setDebtForm(c => ({ ...c, amount: v }))} placeholder="0.00" />
           <AppInput label="Note" value={debtForm.note} onChangeText={v => setDebtForm(c => ({ ...c, note: v }))} placeholder="Optional" />
-          <AppButton title={`Date: ${formatDate(debtForm.date)}`} iconName="calendar" variant="outline" onPress={() => setShowDatePicker(true)} />
-          {showDatePicker ? <DateTimePicker mode="date" display="default" value={debtForm.date} onChange={(_, d) => { setShowDatePicker(false); if (d) setDebtForm(c => ({ ...c, date: d })); }} /> : null}
+          <AppButton title={`Date: ${formatDate(debtForm.date)}`} iconName="calendar" variant="outline" onPress={() => openDebtDatePicker('debt')} />
           <AppButton
             title={`${debtForm.direction === 'i_owe' ? 'Payback Date' : 'Expected Payment Date'}: ${formatDate(debtForm.dueDate)}`}
             iconName="calendar-clock"
             variant="outline"
-            onPress={() => setShowDueDatePicker(true)}
+            onPress={() => openDebtDatePicker('due')}
           />
-          {showDueDatePicker ? <DateTimePicker mode="date" display="default" value={debtForm.dueDate} onChange={(_, d) => { setShowDueDatePicker(false); if (d) setDebtForm(c => ({ ...c, dueDate: d })); }} /> : null}
           <AppButton title={debtForm.id ? 'Update Debt' : 'Save Debt'} iconName="content-save-outline" onPress={onAddDebt} />
         </ScrollView>
       </AppModal>
 
-      <AppModal visible={paymentModal} title="Add Payment" onClose={() => setPaymentModal(false)}>
+      <AppModal
+        visible={paymentModal}
+        title="Add Payment"
+        onClose={() => setPaymentModal(false)}
+        overlay={(
+          <DatePickerModal
+            visible={activeDatePicker === 'payment'}
+            embedded
+            value={pickerDate}
+            title="Select Payment Date"
+            onClose={() => setActiveDatePicker(null)}
+            onConfirm={onConfirmDate}
+          />
+        )}>
         <View style={styles.modalBody}>
           <AppText variant="label" color={colors.textSecondary}>Remaining: {formatCurrency(activeDebt?.remainingAmount || 0, currency)}</AppText>
           <AppInput label="Payment Amount" keyboardType="decimal-pad" value={paymentAmount} onChangeText={setPaymentAmount} placeholder="0.00" />
           <AppInput label="Note" value={paymentNote} onChangeText={setPaymentNote} placeholder="Optional" />
-          <AppButton title={`Date: ${formatDate(paymentDate)}`} iconName="calendar" variant="outline" onPress={() => setShowPaymentDatePicker(true)} />
-          {showPaymentDatePicker ? <DateTimePicker mode="date" display="default" value={paymentDate} onChange={(_, d) => { setShowPaymentDatePicker(false); if (d) setPaymentDate(d); }} /> : null}
+          <AppButton title={`Date: ${formatDate(paymentDate)}`} iconName="calendar" variant="outline" onPress={() => openDebtDatePicker('payment')} />
           <AppButton title="Save Payment" iconName="content-save-outline" onPress={async () => {
             if (!activeDebt) return;
             try {
@@ -286,15 +303,6 @@ const styles = StyleSheet.create({
   listHeader: { gap: spacing.md },
   summaryRow: { flexDirection: 'row', gap: spacing.sm },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  excelBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: '#1D9E4E',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  excelBtnDisabled: { opacity: 0.6 },
   summaryCard: { flex: 1, borderRadius: radius.lg, padding: spacing.md, gap: spacing.xs },
   personHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   peopleWrap: { marginTop: spacing.sm, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

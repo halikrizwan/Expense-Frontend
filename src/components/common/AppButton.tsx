@@ -8,8 +8,8 @@ import {
 } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { AppColors, radius, spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
+import { AppColors, radius, spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
 import { AppText } from './AppText';
 
 interface Props {

@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { AppColors, radius, spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
-import { AppText } from './AppText';
+import { AppColors, radius, spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { AppText } from '../common/AppText';
 
 interface Item {
   key: string;

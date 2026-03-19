@@ -9,28 +9,24 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { AppColors, radius, spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
-import { AppText } from './AppText';
-
-export interface SelectItem {
-  label: string;
-  value: string;
-}
+import { AppColors, radius, spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
+import { AppText } from '../common/AppText';
+import { SelectItem } from './AppSelect';
 
 interface Props {
   label?: string;
-  value: string;
-  items: SelectItem[];
-  onValueChange: (value: string) => void;
+  options: SelectItem[];
+  selectedValues: string[];
+  onChange: (values: string[]) => void;
   placeholder?: string;
 }
 
-export const AppSelect: React.FC<Props> = ({
+export const AppMultiSelect: React.FC<Props> = ({
   label,
-  value,
-  items,
-  onValueChange,
+  options,
+  selectedValues,
+  onChange,
   placeholder = 'Select',
 }) => {
   const { colors } = useAppTheme();
@@ -38,14 +34,30 @@ export const AppSelect: React.FC<Props> = ({
   const [visible, setVisible] = useState(false);
   const [query, setQuery] = useState('');
 
-  const selectedLabel =
-    items.find(item => item.value === value)?.label || placeholder;
+  const selectedLabels = useMemo(
+    () => options.filter(option => selectedValues.includes(option.value)).map(option => option.label),
+    [options, selectedValues],
+  );
 
-  const filteredItems = useMemo(() => {
+  const summary = useMemo(() => {
+    if (!selectedValues.length) return placeholder;
+    if (selectedValues.length <= 2) return selectedLabels.join(', ');
+    return `${selectedValues.length} selected`;
+  }, [placeholder, selectedLabels, selectedValues.length]);
+
+  const filteredOptions = useMemo(() => {
     const search = query.trim().toLowerCase();
-    if (!search) return items;
-    return items.filter(item => item.label.toLowerCase().includes(search));
-  }, [items, query]);
+    if (!search) return options;
+    return options.filter(option => option.label.toLowerCase().includes(search));
+  }, [options, query]);
+
+  const toggle = (value: string) => {
+    if (selectedValues.includes(value)) {
+      onChange(selectedValues.filter(item => item !== value));
+      return;
+    }
+    onChange([...selectedValues, value]);
+  };
 
   const close = () => {
     setVisible(false);
@@ -57,8 +69,8 @@ export const AppSelect: React.FC<Props> = ({
       {label ? <AppText variant="label" color={colors.textSecondary}>{label}</AppText> : null}
 
       <Pressable style={styles.trigger} onPress={() => setVisible(true)}>
-        <AppText numberOfLines={1} color={value ? colors.textPrimary : colors.textSecondary}>
-          {selectedLabel}
+        <AppText numberOfLines={1} color={selectedValues.length ? colors.textPrimary : colors.textSecondary}>
+          {summary}
         </AppText>
         <Icon name="chevron-down" size={20} color={colors.textSecondary} />
       </Pressable>
@@ -67,9 +79,9 @@ export const AppSelect: React.FC<Props> = ({
         <Pressable style={styles.backdrop} onPress={close}>
           <Pressable style={styles.sheet} onPress={() => undefined}>
             <View style={styles.sheetHeader}>
-              <AppText variant="heading">Select option</AppText>
-              <TouchableOpacity onPress={close} style={styles.closeBtn}>
-                <Icon name="close" size={18} color={colors.primary} />
+              <AppText variant="heading">Select options</AppText>
+              <TouchableOpacity onPress={close} style={styles.doneBtn}>
+                <AppText variant="label" color="#FFF">Done</AppText>
               </TouchableOpacity>
             </View>
 
@@ -85,7 +97,7 @@ export const AppSelect: React.FC<Props> = ({
             </View>
 
             <FlatList
-              data={filteredItems}
+              data={filteredOptions}
               keyExtractor={item => item.value}
               keyboardShouldPersistTaps="handled"
               ListEmptyComponent={(
@@ -94,16 +106,15 @@ export const AppSelect: React.FC<Props> = ({
                 </View>
               )}
               renderItem={({ item }) => {
-                const active = item.value === value;
+                const active = selectedValues.includes(item.value);
                 return (
-                  <Pressable
-                    style={[styles.row, active && styles.rowActive]}
-                    onPress={() => {
-                      onValueChange(item.value);
-                      close();
-                    }}>
+                  <Pressable style={[styles.row, active && styles.rowActive]} onPress={() => toggle(item.value)}>
                     <AppText color={active ? colors.primary : colors.textPrimary}>{item.label}</AppText>
-                    {active ? <Icon name="check-circle" size={18} color={colors.primary} /> : null}
+                    <Icon
+                      name={active ? 'checkbox-marked-circle' : 'checkbox-blank-circle-outline'}
+                      size={20}
+                      color={active ? colors.primary : colors.textSecondary}
+                    />
                   </Pressable>
                 );
               }}
@@ -122,9 +133,9 @@ const createStyles = (colors: AppColors) =>
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radius.md,
+      backgroundColor: colors.inputBackground,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.md,
-      backgroundColor: colors.inputBackground,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -144,20 +155,18 @@ const createStyles = (colors: AppColors) =>
       borderColor: colors.border,
       padding: spacing.md,
       gap: spacing.sm,
-      maxHeight: '70%',
+      maxHeight: '72%',
     },
     sheetHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
     },
-    closeBtn: {
-      width: 32,
-      height: 32,
+    doneBtn: {
       borderRadius: 999,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: colors.primarySoft,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+      backgroundColor: colors.primary,
     },
     searchBox: {
       flexDirection: 'row',

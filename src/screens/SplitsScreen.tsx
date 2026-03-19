@@ -1,11 +1,10 @@
 import dayjs from 'dayjs';
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { FlatList, ListRenderItem, ScrollView, StyleSheet, View } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppMultiSelect, AppSelect, AppText, EmptyState, Loading } from '../components';
+import { AnimatedSection, AppButton, AppCard, AppHeader, AppInput, AppModal, AppMultiSelect, AppSelect, AppText, DatePickerModal, EmptyState, Loading } from '../components';
 import { useAppAlert } from '../context/AppAlertContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { colors, radius, spacing } from '../constants/theme';
@@ -57,14 +56,14 @@ export const SplitsScreen = () => {
   const [settleModal, setSettleModal] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [splitForm, setSplitForm] = useState<SplitFormState>(defaultSplitForm);
-  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const [settleGroupId, setSettleGroupId] = useState('');
   const [settleFromId, setSettleFromId] = useState('');
   const [settleToId, setSettleToId] = useState('');
   const [settleAmount, setSettleAmount] = useState('');
   const [settleDate, setSettleDate] = useState(new Date());
-  const [showSettleDatePicker, setShowSettleDatePicker] = useState(false);
+  const [activeDatePicker, setActiveDatePicker] = useState<'split' | 'settlement' | null>(null);
+  const [pickerDate, setPickerDate] = useState(new Date());
 
   const groupMap = useMemo(() => groups.reduce<Record<string, string>>((acc, group) => {
     acc[group.id] = group.name;
@@ -74,6 +73,20 @@ export const SplitsScreen = () => {
   const renderItem: ListRenderItem<SplitExpense> = ({ item }) => (
     <SplitRow item={item} groupName={groupMap[item.groupId] || 'Group'} payerName={peopleMap[item.payerPersonId]?.name || 'Unknown'} currency={currency} />
   );
+
+  const openDatePicker = (field: 'split' | 'settlement') => {
+    setPickerDate(field === 'split' ? splitForm.date : settleDate);
+    setActiveDatePicker(field);
+  };
+
+  const onConfirmDate = (value: Date) => {
+    if (activeDatePicker === 'split') {
+      setSplitForm(current => ({ ...current, date: value }));
+    } else if (activeDatePicker === 'settlement') {
+      setSettleDate(value);
+    }
+    setActiveDatePicker(null);
+  };
 
   useEffect(() => subscribeRefresh('splits', refresh), [refresh]);
 
@@ -122,7 +135,20 @@ export const SplitsScreen = () => {
         </View>
       </AppModal>
 
-      <AppModal visible={splitModal} title="Add Split Expense" onClose={() => setSplitModal(false)}>
+      <AppModal
+        visible={splitModal}
+        title="Add Split Expense"
+        onClose={() => setSplitModal(false)}
+        overlay={(
+          <DatePickerModal
+            visible={activeDatePicker === 'split'}
+            embedded
+            value={pickerDate}
+            title="Select Split Date"
+            onClose={() => setActiveDatePicker(null)}
+            onConfirm={onConfirmDate}
+          />
+        )}>
         <ScrollView contentContainerStyle={styles.modalBody}>
           <AppInput label="Title" value={splitForm.title} onChangeText={value => setSplitForm(current => ({ ...current, title: value }))} placeholder="Dinner" />
           <AppSelect
@@ -148,8 +174,7 @@ export const SplitsScreen = () => {
           />
           <AppInput label="Amount" keyboardType="decimal-pad" value={splitForm.amount} onChangeText={value => setSplitForm(current => ({ ...current, amount: value }))} placeholder="0.00" />
           <AppInput label="Note" value={splitForm.note} onChangeText={value => setSplitForm(current => ({ ...current, note: value }))} placeholder="Optional" />
-          <AppButton title={`Date: ${formatDate(splitForm.date)}`} iconName="calendar" variant="outline" onPress={() => setShowDatePicker(true)} />
-          {showDatePicker ? <DateTimePicker mode="date" display="default" value={splitForm.date} onChange={(_, dateValue) => { setShowDatePicker(false); if (dateValue) setSplitForm(current => ({ ...current, date: dateValue })); }} /> : null}
+          <AppButton title={`Date: ${formatDate(splitForm.date)}`} iconName="calendar" variant="outline" onPress={() => openDatePicker('split')} />
           <AppButton title="Save Split" iconName="content-save-outline" onPress={async () => {
             if (!splitForm.groupId || !splitForm.payerPersonId || !splitForm.title.trim()) return alert('Validation', 'Group, title, and payer are required.', 'warning');
             const amount = Number(splitForm.amount);
@@ -166,7 +191,20 @@ export const SplitsScreen = () => {
         </ScrollView>
       </AppModal>
 
-      <AppModal visible={settleModal} title="Settle Balance" onClose={() => setSettleModal(false)}>
+      <AppModal
+        visible={settleModal}
+        title="Settle Balance"
+        onClose={() => setSettleModal(false)}
+        overlay={(
+          <DatePickerModal
+            visible={activeDatePicker === 'settlement'}
+            embedded
+            value={pickerDate}
+            title="Select Settlement Date"
+            onClose={() => setActiveDatePicker(null)}
+            onConfirm={onConfirmDate}
+          />
+        )}>
         <ScrollView contentContainerStyle={styles.modalBody}>
           <AppSelect
             label="Group"
@@ -190,8 +228,7 @@ export const SplitsScreen = () => {
             placeholder="Select person"
           />
           <AppInput label="Amount" keyboardType="decimal-pad" value={settleAmount} onChangeText={setSettleAmount} placeholder="0.00" />
-          <AppButton title={`Date: ${formatDate(settleDate)}`} iconName="calendar" variant="outline" onPress={() => setShowSettleDatePicker(true)} />
-          {showSettleDatePicker ? <DateTimePicker mode="date" display="default" value={settleDate} onChange={(_, d) => { setShowSettleDatePicker(false); if (d) setSettleDate(d); }} /> : null}
+          <AppButton title={`Date: ${formatDate(settleDate)}`} iconName="calendar" variant="outline" onPress={() => openDatePicker('settlement')} />
           <AppButton title="Save Settlement" iconName="content-save-outline" onPress={async () => {
             const amount = Number(settleAmount);
             if (!settleGroupId || !settleFromId || !settleToId || !amount || amount <= 0) return alert('Validation', 'Please fill all settlement fields correctly.', 'warning');

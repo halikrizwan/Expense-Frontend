@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { AppText, Loading } from './src/components';
+import { AppText, ErrorBoundary, Loading } from './src/components';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { AppAlertProvider } from './src/context/AppAlertContext';
 import { ThemeProvider, useAppTheme } from './src/context/ThemeContext';
@@ -62,15 +62,17 @@ const AppBoot = () => {
 
 function App(): React.JSX.Element {
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
         <AuthProvider>
-          <AppAlertProvider>
-            <AppBoot />
-          </AppAlertProvider>
+          <ThemeProvider>
+            <AppAlertProvider>
+              <AppBoot />
+            </AppAlertProvider>
+          </ThemeProvider>
         </AuthProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

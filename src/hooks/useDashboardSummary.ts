@@ -22,6 +22,8 @@ export const useDashboardSummary = () => {
       setSummary(data.summary);
       setRecentActivity(data.recentActivity);
       setPayments(data.payments);
+    } catch {
+      // Error shown via ApiError; keep previous data
     } finally {
       setLoading(false);
     }

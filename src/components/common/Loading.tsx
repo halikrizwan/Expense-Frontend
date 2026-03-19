@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { spacing } from '../constants/theme';
-import { useAppTheme } from '../context/ThemeContext';
+import { spacing } from '../../constants/theme';
+import { useAppTheme } from '../../context/ThemeContext';
 import { AppText } from './AppText';
 
 interface Props {
