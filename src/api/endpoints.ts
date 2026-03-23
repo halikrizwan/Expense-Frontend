@@ -85,6 +85,8 @@ export const addRecurringApi = (payload: {
   amount: number;
   label?: string;
   dayOfMonth: number;
+  endsAt?: string | null;
+  notifyEnabled?: boolean;
 }) =>
   apiRequest<RecurringTransaction>('/recurring', {
     method: 'POST',
@@ -99,6 +101,8 @@ export const updateRecurringApi = (
     label?: string;
     dayOfMonth?: number;
     isActive?: boolean;
+    endsAt?: string | null;
+    notifyEnabled?: boolean;
   },
 ) =>
   apiRequest<RecurringTransaction>(`/recurring/${id}`, {

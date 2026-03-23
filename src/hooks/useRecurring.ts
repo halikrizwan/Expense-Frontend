@@ -41,6 +41,8 @@ export const useRecurring = () => {
       amount: number;
       label?: string;
       dayOfMonth: number;
+      endsAt?: string | null;
+      notifyEnabled?: boolean;
     }) => {
       const item = await addRecurringApi(payload);
       await refresh();
@@ -59,6 +61,8 @@ export const useRecurring = () => {
         label?: string;
         dayOfMonth?: number;
         isActive?: boolean;
+        endsAt?: string | null;
+        notifyEnabled?: boolean;
       },
     ) => {
       await updateRecurringApi(id, payload);

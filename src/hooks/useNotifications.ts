@@ -128,12 +128,16 @@ export const useNotifications = () => {
       });
 
     recurring
-      .filter(item => item.isActive)
+      .filter(item => item.isActive && item.notifyEnabled !== false)
       .forEach(item => {
         if (isSameMonth(item.lastProcessedAt)) return;
 
         const dueDay = Math.min(item.dayOfMonth, endOfMonthDay);
         const dueDate = today.date(dueDay);
+        if (item.endsAt) {
+          const endD = dayjs(item.endsAt).startOf('day');
+          if (dueDate.startOf('day').isAfter(endD)) return;
+        }
         const diff = dueDate.diff(today, 'day');
         const label = item.label || categoryMap[item.categoryId]?.name || 'Monthly entry';
         const kind = item.type === 'income' ? 'Auto credit' : 'Auto debit';

@@ -17,7 +17,7 @@ import { resetAllApi, updateSettingsApi, addCategoryApi, addGroupApi } from '../
 import { exportToJson, exportTransactionsToCsv, importFromJson } from '../services/exportService';
 import { emitRefresh, subscribeRefresh } from '../services/refreshBus';
 import { RecurringTransaction, TransactionType } from '../types/entities';
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatDate } from '../utils/format';
 
 export const SettingsScreen = () => {
   const insets = useSafeAreaInsets();
@@ -40,9 +40,13 @@ export const SettingsScreen = () => {
     amount: '',
     label: 'Salary',
     dayOfMonth: 1,
+    endsAt: null as Date | null,
+    notifyEnabled: true,
   });
   const [recurringPickerDate, setRecurringPickerDate] = useState(new Date());
+  const [recurringEndPickerDate, setRecurringEndPickerDate] = useState(new Date());
   const [showRecurringDatePicker, setShowRecurringDatePicker] = useState(false);
+  const [showRecurringEndDatePicker, setShowRecurringEndDatePicker] = useState(false);
   const [editingRecurring, setEditingRecurring] = useState<RecurringTransaction | null>(null);
 
   useEffect(() => { setCurrencyInput(currency); }, [currency]);
@@ -66,8 +70,13 @@ export const SettingsScreen = () => {
         amount: '',
         label: 'Salary',
         dayOfMonth: new Date().getDate(),
+        endsAt: null,
+        notifyEnabled: true,
       });
       setRecurringPickerDate(new Date());
+      const nextYear = new Date();
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      setRecurringEndPickerDate(nextYear);
       setEditingRecurring(null);
     }
   };
@@ -75,14 +84,18 @@ export const SettingsScreen = () => {
   const openEditRecurring = (r: RecurringTransaction) => {
     setEditingRecurring(r);
     setCreateModal('recurring');
+    const end = r.endsAt ? new Date(r.endsAt) : null;
     setRecurringForm({
       type: r.type,
       categoryId: r.categoryId,
       amount: String(r.amount),
       label: r.label,
       dayOfMonth: r.dayOfMonth,
+      endsAt: end,
+      notifyEnabled: r.notifyEnabled !== false,
     });
     setRecurringPickerDate(new Date(new Date().getFullYear(), new Date().getMonth(), r.dayOfMonth));
+    setRecurringEndPickerDate(end ?? new Date(new Date().getFullYear(), new Date().getMonth() + 6, 1));
   };
 
   const categoriesByType = useMemo(
@@ -110,6 +123,7 @@ export const SettingsScreen = () => {
       return;
     }
     await withLoading(async () => {
+      const endsIso = recurringForm.endsAt ? recurringForm.endsAt.toISOString() : null;
       if (editingRecurring) {
         await updateRecurring(editingRecurring.id, {
           type: recurringForm.type,
@@ -117,6 +131,8 @@ export const SettingsScreen = () => {
           amount,
           label: recurringForm.label.trim() || 'Salary',
           dayOfMonth: recurringForm.dayOfMonth,
+          endsAt: endsIso,
+          notifyEnabled: recurringForm.notifyEnabled,
         });
       } else {
         await addRecurring({
@@ -125,6 +141,8 @@ export const SettingsScreen = () => {
           amount,
           label: recurringForm.label.trim() || 'Salary',
           dayOfMonth: recurringForm.dayOfMonth,
+          ...(endsIso ? { endsAt: endsIso } : {}),
+          notifyEnabled: recurringForm.notifyEnabled,
         });
       }
       emitRefresh('dashboard');
@@ -228,6 +246,10 @@ export const SettingsScreen = () => {
                     <AppText variant="caption" color={colors.textSecondary}>
                       {formatCurrency(r.amount, currency)} · Day {r.dayOfMonth} · {categoryMap[r.categoryId]?.name || '—'}
                     </AppText>
+                    <AppText variant="caption" color={colors.textSecondary}>
+                      {r.endsAt ? `Until ${formatDate(r.endsAt)}` : 'Permanent'} ·{' '}
+                      {r.notifyEnabled === false ? 'No reminders' : 'Reminders on'}
+                    </AppText>
                   </View>
                   <View style={styles.recurringActions}>
                     <Switch
@@ -325,18 +347,32 @@ export const SettingsScreen = () => {
         }
         onClose={() => setCreateModal(null)}
         overlay={(
-          <DatePickerModal
-            visible={showRecurringDatePicker}
-            embedded
-            value={recurringPickerDate}
-            title="Select Monthly Date"
-            onClose={() => setShowRecurringDatePicker(false)}
-            onConfirm={value => {
-              setRecurringPickerDate(value);
-              setRecurringForm(current => ({ ...current, dayOfMonth: value.getDate() }));
-              setShowRecurringDatePicker(false);
-            }}
-          />
+          <>
+            <DatePickerModal
+              visible={showRecurringDatePicker}
+              embedded
+              value={recurringPickerDate}
+              title="Select Monthly Date"
+              onClose={() => setShowRecurringDatePicker(false)}
+              onConfirm={value => {
+                setRecurringPickerDate(value);
+                setRecurringForm(current => ({ ...current, dayOfMonth: value.getDate() }));
+                setShowRecurringDatePicker(false);
+              }}
+            />
+            <DatePickerModal
+              visible={showRecurringEndDatePicker}
+              embedded
+              value={recurringEndPickerDate}
+              title="End date (inclusive)"
+              onClose={() => setShowRecurringEndDatePicker(false)}
+              onConfirm={value => {
+                setRecurringEndPickerDate(value);
+                setRecurringForm(current => ({ ...current, endsAt: value }));
+                setShowRecurringEndDatePicker(false);
+              }}
+            />
+          </>
         )}>
         <View style={styles.modalBody}>
           {createModal === 'recurring' ? (
@@ -394,8 +430,40 @@ export const SettingsScreen = () => {
                 onPress={() => setShowRecurringDatePicker(true)}
               />
               <AppText variant="caption" color={colors.textSecondary}>
-                This entry will be created every month on day {recurringForm.dayOfMonth}.
+                This entry will be created every month on day {recurringForm.dayOfMonth}. Leave &quot;Runs until&quot;
+                empty for a permanent schedule (you can change it anytime).
               </AppText>
+              <AppButton
+                title={
+                  recurringForm.endsAt
+                    ? `Runs until: ${formatDate(recurringForm.endsAt)}`
+                    : 'Runs until: Permanent (no end date)'
+                }
+                iconName="calendar-range"
+                variant="outline"
+                onPress={() => setShowRecurringEndDatePicker(true)}
+              />
+              {recurringForm.endsAt ? (
+                <AppButton
+                  title="Clear end date (permanent)"
+                  variant="soft"
+                  onPress={() => setRecurringForm(f => ({ ...f, endsAt: null }))}
+                />
+              ) : null}
+              <View style={styles.themeRow}>
+                <View style={styles.themeMeta}>
+                  <AppText variant="bodyStrong">Remind me</AppText>
+                  <AppText variant="caption" color={colors.textSecondary}>
+                    In-app notifications when this entry is due today or in the next few days.
+                  </AppText>
+                </View>
+                <Switch
+                  value={recurringForm.notifyEnabled}
+                  onValueChange={v => setRecurringForm(f => ({ ...f, notifyEnabled: v }))}
+                  trackColor={{ false: colors.border, true: colors.primarySoft }}
+                  thumbColor={recurringForm.notifyEnabled ? colors.primary : '#FFFFFF'}
+                />
+              </View>
               <AppButton
                 title={editingRecurring ? 'Update Monthly Entry' : 'Save Monthly Entry'}
                 iconName="plus"
@@ -481,7 +549,7 @@ const createStyles = (colors: AppColors, mode: 'light' | 'dark') =>
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
-    recurringMeta: { flex: 1 },
+    recurringMeta: { flex: 1, gap: 2 },
     recurringActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     iconBtn: { padding: spacing.xs },
     modalBody: {

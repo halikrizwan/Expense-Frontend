@@ -27,6 +27,10 @@ export interface RecurringTransaction {
   label: string;
   dayOfMonth: number;
   isActive: boolean;
+  /** Last calendar day the schedule runs (inclusive). Omitted/null = permanent until edited. */
+  endsAt?: string | null;
+  /** In-app reminders for this schedule (default true if omitted). */
+  notifyEnabled?: boolean;
   lastProcessedAt: string | null;
   createdAt: string;
   updatedAt: string;
